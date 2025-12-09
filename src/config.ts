@@ -4,7 +4,7 @@ import { z } from "zod";
 config();
 
 const envSchema = z.object({
-  DATABASE_URL: z.string().url(),
+  DATABASE_URL: z.string().min(1),
   RATE_LIMIT_MS: z.coerce.number().default(200),
   MAX_RETRIES: z.coerce.number().default(3),
 });
