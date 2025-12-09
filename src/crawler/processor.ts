@@ -1,0 +1,165 @@
+import { fipeClient } from "../fipe/client.js";
+import * as repo from "../db/repository.js";
+
+function parseYearValue(value: string): { year: number; fuelCode: number } {
+  // Format: "2020-1" (year-fuelCode)
+  const [yearStr, fuelCodeStr] = value.split("-");
+  return {
+    year: parseInt(yearStr, 10),
+    fuelCode: parseInt(fuelCodeStr, 10),
+  };
+}
+
+function parsePrice(valor: string): string {
+  // "R$ 4.147,00" -> "4147.00"
+  return valor
+    .replace("R$ ", "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+}
+
+function parseReferenceMonth(mes: string): { month: number; year: number } {
+  // "dezembro/2025 " -> { month: 12, year: 2025 }
+  const months: Record<string, number> = {
+    janeiro: 1,
+    fevereiro: 2,
+    março: 3,
+    abril: 4,
+    maio: 5,
+    junho: 6,
+    julho: 7,
+    agosto: 8,
+    setembro: 9,
+    outubro: 10,
+    novembro: 11,
+    dezembro: 12,
+  };
+
+  const [monthName, yearStr] = mes.trim().toLowerCase().split("/");
+  return {
+    month: months[monthName] || 0,
+    year: parseInt(yearStr, 10),
+  };
+}
+
+interface CrawlOptions {
+  referenceCode?: number;
+  brandCode?: string;
+  onProgress?: (message: string) => void;
+}
+
+export async function crawl(options: CrawlOptions = {}): Promise<void> {
+  const log = options.onProgress ?? console.log;
+
+  // Get reference tables (2025 only, or specific one)
+  log("Fetching reference tables...");
+  const allRefs = await fipeClient.getReferenceTables();
+
+  // Filter to 2025 or specific reference
+  const refs = options.referenceCode
+    ? allRefs.filter((r) => r.Codigo === options.referenceCode)
+    : allRefs.filter((r) => r.Mes.includes("2025"));
+
+  if (refs.length === 0) {
+    log("No reference tables found to process");
+    return;
+  }
+
+  log(`Found ${refs.length} reference tables to process`);
+
+  let totalPrices = 0;
+  const startTime = Date.now();
+
+  for (const ref of refs) {
+    const { month, year } = parseReferenceMonth(ref.Mes);
+    const refRecord = await repo.upsertReferenceTable(ref.Codigo, month, year);
+
+    log(`\nProcessing reference ${ref.Codigo} (${ref.Mes.trim()})...`);
+
+    // Get brands
+    const allBrands = await fipeClient.getBrands(ref.Codigo);
+    const brands = options.brandCode
+      ? allBrands.filter((b) => b.Value === options.brandCode)
+      : allBrands;
+
+    log(`  Found ${brands.length} brands`);
+
+    for (const brand of brands) {
+      const brandRecord = await repo.upsertBrand(brand.Value, brand.Label);
+      log(`  Processing brand: ${brand.Label}`);
+
+      try {
+        const modelsResponse = await fipeClient.getModels(ref.Codigo, brand.Value);
+        const models = modelsResponse.Modelos;
+
+        for (const model of models) {
+          const modelRecord = await repo.upsertModel(
+            brandRecord.id,
+            String(model.Value),
+            model.Label
+          );
+
+          try {
+            const years = await fipeClient.getYears(
+              ref.Codigo,
+              brand.Value,
+              String(model.Value)
+            );
+
+            for (const yearData of years) {
+              const { year: modelYear, fuelCode } = parseYearValue(yearData.Value);
+
+              const modelYearRecord = await repo.upsertModelYear(
+                modelRecord.id,
+                modelYear,
+                fuelCode,
+                yearData.Label
+              );
+
+              try {
+                const price = await fipeClient.getPrice({
+                  referenceCode: ref.Codigo,
+                  brandCode: brand.Value,
+                  modelCode: String(model.Value),
+                  year: String(modelYear),
+                  fuelCode,
+                });
+
+                await repo.upsertPrice(
+                  modelYearRecord.id,
+                  refRecord.id,
+                  price.CodigoFipe,
+                  parsePrice(price.Valor)
+                );
+
+                totalPrices++;
+              } catch (err) {
+                // Price fetch failed - skip this year
+              }
+            }
+          } catch (err) {
+            // Years fetch failed - skip this model
+          }
+        }
+      } catch (err) {
+        // Models fetch failed - skip this brand
+        log(`    Error fetching models for ${brand.Label}: ${err}`);
+      }
+    }
+
+    await repo.markReferenceCrawled(ref.Codigo);
+    log(`  Completed reference ${ref.Codigo}`);
+  }
+
+  const duration = Math.round((Date.now() - startTime) / 1000);
+  log(`\nCrawl complete: ${totalPrices} prices in ${duration}s`);
+}
+
+export async function status(): Promise<void> {
+  const stats = await repo.getStats();
+  console.log("\nDatabase status:");
+  console.log(`  References: ${stats.references}`);
+  console.log(`  Brands: ${stats.brands}`);
+  console.log(`  Models: ${stats.models}`);
+  console.log(`  Prices: ${stats.prices}`);
+}
