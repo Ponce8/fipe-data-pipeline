@@ -15,7 +15,7 @@ A FIPE publica preços de veículos todo mês desde 2001, mas:
 
 ## Features
 
-- **Throttling inteligente** - 200ms entre requests + retry com backoff exponencial
+- **Throttling adaptativo** - ajusta delay automaticamente em caso de rate limit (429)
 - **Fallback hierárquico** - se um modelo falha, continua com os outros
 - **Upserts idempotentes** - pode rodar de novo sem duplicar dados
 - **Classificação por segmento** - categoriza modelos (SUV, Sedã, Hatch, etc.) usando Claude

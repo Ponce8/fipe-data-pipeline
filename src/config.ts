@@ -6,6 +6,7 @@ config();
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   RATE_LIMIT_MS: z.coerce.number().default(200),
+  MAX_THROTTLE_MS: z.coerce.number().default(5000),
   MAX_RETRIES: z.coerce.number().default(3),
   ANTHROPIC_API_KEY: z.string().optional(),
 });

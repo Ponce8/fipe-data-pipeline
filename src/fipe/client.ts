@@ -18,20 +18,52 @@ async function sleep(ms: number): Promise<void> {
 
 export class FipeClient {
   private lastRequestTime = 0;
+  private currentThrottleMs = env.RATE_LIMIT_MS;
+  private successCount = 0;
 
   private async throttle(): Promise<void> {
     const now = Date.now();
     const elapsed = now - this.lastRequestTime;
-    if (elapsed < env.RATE_LIMIT_MS) {
-      await sleep(env.RATE_LIMIT_MS - elapsed);
+    if (elapsed < this.currentThrottleMs) {
+      await sleep(this.currentThrottleMs - elapsed);
     }
     this.lastRequestTime = Date.now();
+  }
+
+  private calculateBackoff(attempt: number): number {
+    return 1000 * Math.pow(2, attempt); // 1s, 2s, 4s, 8s...
+  }
+
+  private increaseThrottle(): void {
+    const newThrottle = Math.min(this.currentThrottleMs * 2, env.MAX_THROTTLE_MS);
+    if (newThrottle !== this.currentThrottleMs) {
+      console.log(
+        `Rate limited: increasing throttle from ${this.currentThrottleMs}ms to ${newThrottle}ms`,
+      );
+      this.currentThrottleMs = newThrottle;
+    }
+    this.successCount = 0;
+  }
+
+  private recordSuccess(): void {
+    this.successCount++;
+    if (this.successCount >= 10 && this.currentThrottleMs > env.RATE_LIMIT_MS) {
+      const newThrottle = Math.max(this.currentThrottleMs - 50, env.RATE_LIMIT_MS);
+      if (newThrottle !== this.currentThrottleMs) {
+        console.log(
+          `Throttle recovery: decreasing from ${this.currentThrottleMs}ms to ${newThrottle}ms`,
+        );
+        this.currentThrottleMs = newThrottle;
+      }
+      this.successCount = 0;
+    }
   }
 
   private async request<T>(
     endpoint: string,
     body: Record<string, unknown>,
     retries = env.MAX_RETRIES,
+    attempt = 0,
   ): Promise<T> {
     await this.throttle();
 
@@ -44,9 +76,27 @@ export class FipeClient {
     });
 
     if (!response.ok) {
-      if (retries > 0) {
-        await sleep(1000);
-        return this.request(endpoint, body, retries - 1);
+      if (response.status === 429) {
+        this.increaseThrottle();
+
+        if (retries > 0) {
+          // Check for Retry-After header
+          const retryAfter = response.headers.get('Retry-After');
+          const waitTime = retryAfter
+            ? parseInt(retryAfter, 10) * 1000
+            : this.calculateBackoff(attempt);
+
+          console.log(`429 received, waiting ${waitTime}ms before retry (${retries} retries left)`);
+          await sleep(waitTime);
+          return this.request(endpoint, body, retries - 1, attempt + 1);
+        }
+      } else if (retries > 0) {
+        const waitTime = this.calculateBackoff(attempt);
+        console.log(
+          `HTTP ${response.status}, waiting ${waitTime}ms before retry (${retries} retries left)`,
+        );
+        await sleep(waitTime);
+        return this.request(endpoint, body, retries - 1, attempt + 1);
       }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
@@ -59,6 +109,7 @@ export class FipeClient {
       throw new Error(`FIPE error: ${errorResult.data.erro}`);
     }
 
+    this.recordSuccess();
     return data as T;
   }
 
