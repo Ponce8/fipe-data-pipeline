@@ -76,14 +76,17 @@ ALLOWED_BRANDS=21,22,23 pnpm crawl  # Fiat, Ford, Chevrolet
 # Build
 docker build -t fipe-crawler .
 
+# Rodar container (fica idle, pronto para comandos)
+docker run -d --name fipe --env-file .env fipe-crawler
+
+# Executar crawl
+docker exec fipe pnpm tsx src/index.ts crawl --brand 25 --year 2024 --month 6
+
 # Ver ajuda
-docker run --rm fipe-crawler
+docker exec fipe pnpm tsx src/index.ts --help
 
-# Crawl com filtros
-docker run --rm --env-file .env fipe-crawler crawl --brand 25 --year 2024 --month 6
-
-# Crawl completo do ano atual
-docker run --rm --env-file .env fipe-crawler crawl
+# Ver status
+docker exec fipe pnpm tsx src/index.ts status
 ```
 
 ## Arquitetura
