@@ -1,3 +1,4 @@
+import cliProgress from 'cli-progress';
 import { fipeClient } from '../fipe/client.js';
 import * as repo from '../db/repository.js';
 import { classifySingleModel } from '../classifier/segment-classifier.js';
@@ -104,7 +105,8 @@ export async function crawl(options: CrawlOptions = {}): Promise<void> {
 
     for (const brand of brands) {
       const brandRecord = await repo.upsertBrand(brand.Value, brand.Label);
-      log(`  Processing brand: ${brand.Label}`);
+      const brandStart = Date.now();
+      let brandPrices = 0;
 
       try {
         const modelsResponse = await fipeClient.getModels(ref.Codigo, brand.Value);
@@ -112,7 +114,18 @@ export async function crawl(options: CrawlOptions = {}): Promise<void> {
           ? modelsResponse.Modelos.filter((m) => String(m.Value) === options.modelCode)
           : modelsResponse.Modelos;
 
+        log(`  Processing brand: ${brand.Label} (${models.length} models)`);
+
+        const bar = new cliProgress.SingleBar({
+          format: '    [{bar}] {value}/{total} | {model}',
+          barCompleteChar: '█',
+          barIncompleteChar: '░',
+          hideCursor: true,
+        });
+        bar.start(models.length, 0, { model: '' });
+
         for (const model of models) {
+          bar.update({ model: model.Label.slice(0, 30) });
           const { model: modelRecord, isNew } = await repo.upsertModel(
             brandRecord.id,
             String(model.Value),
@@ -159,6 +172,7 @@ export async function crawl(options: CrawlOptions = {}): Promise<void> {
                 );
 
                 totalPrices++;
+                brandPrices++;
               } catch {
                 // Price fetch failed - skip this year (don't create model_year)
               }
@@ -166,7 +180,13 @@ export async function crawl(options: CrawlOptions = {}): Promise<void> {
           } catch {
             // Years fetch failed - skip this model
           }
+
+          bar.increment();
         }
+
+        bar.stop();
+        const brandDuration = Math.round((Date.now() - brandStart) / 1000);
+        log(`  Completed ${brand.Label} in ${brandDuration}s (${brandPrices} prices)`);
       } catch (err) {
         // Models fetch failed - skip this brand
         log(`    Error fetching models for ${brand.Label}: ${err}`);
