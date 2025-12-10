@@ -2,6 +2,12 @@ import { fipeClient } from '../fipe/client.js';
 import * as repo from '../db/repository.js';
 import { classifySingleModel } from '../classifier/segment-classifier.js';
 
+// Parse ALLOWED_BRANDS from env (comma-separated brand codes)
+// If not set, all brands are crawled
+const ALLOWED_BRANDS: Set<string> | null = process.env.ALLOWED_BRANDS
+  ? new Set(process.env.ALLOWED_BRANDS.split(',').map((s) => s.trim()))
+  : null;
+
 function parseYearValue(value: string): { year: number; fuelCode: number } {
   // Format: "2020-1" (year-fuelCode)
   const [yearStr, fuelCodeStr] = value.split('-');
@@ -78,11 +84,13 @@ export async function crawl(options: CrawlOptions = {}): Promise<void> {
 
     log(`\nProcessing reference ${ref.Codigo} (${ref.Mes.trim()})...`);
 
-    // Get brands
+    // Get brands (filtered to allowlist unless specific brand requested)
     const allBrands = await fipeClient.getBrands(ref.Codigo);
     const brands = options.brandCode
       ? allBrands.filter((b) => b.Value === options.brandCode)
-      : allBrands;
+      : ALLOWED_BRANDS
+        ? allBrands.filter((b) => ALLOWED_BRANDS.has(b.Value))
+        : allBrands;
 
     log(`  Found ${brands.length} brands`);
 

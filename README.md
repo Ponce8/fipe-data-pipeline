@@ -62,6 +62,9 @@ pnpm classify
 
 # Dry-run da classificação
 pnpm classify -- --dry-run
+
+# Filtrar por lista de marcas (via env)
+ALLOWED_BRANDS=21,22,23 pnpm crawl  # Fiat, Ford, Chevrolet
 ```
 
 ## Arquitetura
