@@ -41,5 +41,17 @@ CREATE TABLE IF NOT EXISTS prices (
   UNIQUE(model_year_id, reference_table_id)
 );
 
+-- Existing indexes
 CREATE INDEX IF NOT EXISTS idx_prices_reference ON prices(reference_table_id);
 CREATE INDEX IF NOT EXISTS idx_prices_fipe_code ON prices(fipe_code);
+
+-- Foreign key indexes (for JOINs)
+CREATE INDEX IF NOT EXISTS idx_models_brand_id ON models(brand_id);
+CREATE INDEX IF NOT EXISTS idx_model_years_model_id ON model_years(model_id);
+CREATE INDEX IF NOT EXISTS idx_prices_model_year_id ON prices(model_year_id);
+
+-- Filter indexes
+CREATE INDEX IF NOT EXISTS idx_models_segment ON models(segment);
+CREATE INDEX IF NOT EXISTS idx_reference_year_month ON reference_tables(year, month);
+CREATE INDEX IF NOT EXISTS idx_model_years_year ON model_years(year);
+CREATE INDEX IF NOT EXISTS idx_brands_name ON brands(name);

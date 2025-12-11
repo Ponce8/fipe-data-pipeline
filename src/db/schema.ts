@@ -9,19 +9,27 @@ import {
   index,
 } from 'drizzle-orm/pg-core';
 
-export const referenceTables = pgTable('reference_tables', {
-  id: serial('id').primaryKey(),
-  code: integer('code').unique().notNull(),
-  month: integer('month').notNull(),
-  year: integer('year').notNull(),
-  crawledAt: timestamp('crawled_at'),
-});
+export const referenceTables = pgTable(
+  'reference_tables',
+  {
+    id: serial('id').primaryKey(),
+    code: integer('code').unique().notNull(),
+    month: integer('month').notNull(),
+    year: integer('year').notNull(),
+    crawledAt: timestamp('crawled_at'),
+  },
+  (table) => [index('idx_reference_year_month').on(table.year, table.month)],
+);
 
-export const brands = pgTable('brands', {
-  id: serial('id').primaryKey(),
-  fipeCode: varchar('fipe_code', { length: 10 }).unique().notNull(),
-  name: varchar('name', { length: 100 }).notNull(),
-});
+export const brands = pgTable(
+  'brands',
+  {
+    id: serial('id').primaryKey(),
+    fipeCode: varchar('fipe_code', { length: 10 }).unique().notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+  },
+  (table) => [index('idx_brands_name').on(table.name)],
+);
 
 export const SEGMENTS = [
   'Buggy',
@@ -50,7 +58,11 @@ export const models = pgTable(
     segment: varchar('segment', { length: 20 }),
     segmentSource: varchar('segment_source', { length: 10 }),
   },
-  (table) => [unique().on(table.brandId, table.fipeCode)],
+  (table) => [
+    unique().on(table.brandId, table.fipeCode),
+    index('idx_models_brand_id').on(table.brandId),
+    index('idx_models_segment').on(table.segment),
+  ],
 );
 
 export const modelYears = pgTable(
@@ -64,7 +76,11 @@ export const modelYears = pgTable(
     fuelCode: integer('fuel_code').notNull(),
     fuelName: varchar('fuel_name', { length: 50 }),
   },
-  (table) => [unique().on(table.modelId, table.year, table.fuelCode)],
+  (table) => [
+    unique().on(table.modelId, table.year, table.fuelCode),
+    index('idx_model_years_model_id').on(table.modelId),
+    index('idx_model_years_year').on(table.year),
+  ],
 );
 
 export const prices = pgTable(
@@ -85,5 +101,6 @@ export const prices = pgTable(
     unique().on(table.modelYearId, table.referenceTableId),
     index('idx_prices_reference').on(table.referenceTableId),
     index('idx_prices_fipe_code').on(table.fipeCode),
+    index('idx_prices_model_year_id').on(table.modelYearId),
   ],
 );
