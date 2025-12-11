@@ -83,6 +83,15 @@ export async function upsertModelYear(
 }
 
 // Prices
+export async function priceExists(modelYearId: number, referenceTableId: number): Promise<boolean> {
+  const [existing] = await db
+    .select({ id: prices.id })
+    .from(prices)
+    .where(and(eq(prices.modelYearId, modelYearId), eq(prices.referenceTableId, referenceTableId)))
+    .limit(1);
+  return !!existing;
+}
+
 export async function upsertPrice(
   modelYearId: number,
   referenceTableId: number,

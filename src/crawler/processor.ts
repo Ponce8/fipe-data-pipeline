@@ -54,6 +54,7 @@ interface CrawlOptions {
   brandCode?: string;
   modelCodes?: string[];
   classify?: boolean;
+  force?: boolean;
   onProgress?: (message: string) => void;
 }
 
@@ -147,6 +148,22 @@ export async function crawl(options: CrawlOptions = {}): Promise<void> {
             for (const yearData of years) {
               const { year: modelYear, fuelCode } = parseYearValue(yearData.Value);
 
+              // Upsert model_year first so we can check if price exists
+              const modelYearRecord = await repo.upsertModelYear(
+                modelRecord.id,
+                modelYear,
+                fuelCode,
+                yearData.Label,
+              );
+
+              // Skip if price already exists (unless --force)
+              if (!options.force) {
+                const exists = await repo.priceExists(modelYearRecord.id, refRecord.id);
+                if (exists) {
+                  continue;
+                }
+              }
+
               try {
                 const price = await fipeClient.getPrice({
                   referenceCode: ref.Codigo,
@@ -155,14 +172,6 @@ export async function crawl(options: CrawlOptions = {}): Promise<void> {
                   year: String(modelYear),
                   fuelCode,
                 });
-
-                // Only create model_year if we got a valid price
-                const modelYearRecord = await repo.upsertModelYear(
-                  modelRecord.id,
-                  modelYear,
-                  fuelCode,
-                  yearData.Label,
-                );
 
                 await repo.upsertPrice(
                   modelYearRecord.id,
@@ -174,7 +183,7 @@ export async function crawl(options: CrawlOptions = {}): Promise<void> {
                 totalPrices++;
                 brandPrices++;
               } catch {
-                // Price fetch failed - skip this year (don't create model_year)
+                // Price fetch failed - skip this year
               }
             }
           } catch {

@@ -46,6 +46,7 @@ program
   .option('-b, --brand <code>', 'Specific brand code')
   .option('-m, --model <codes>', 'Model code(s), comma-separated (requires --brand)')
   .option('-c, --classify', 'Classify new models by segment using AI')
+  .option('-f, --force', 'Re-fetch data even if it already exists in the database')
   .action(async (options) => {
     try {
       await crawl({
@@ -55,6 +56,7 @@ program
         brandCode: options.brand,
         modelCodes: options.model ? parseCommaSeparated(options.model) : undefined,
         classify: options.classify,
+        force: options.force,
       });
     } catch (err) {
       console.error('Crawl failed:', err);
