@@ -46,7 +46,8 @@ program
   .option('-b, --brand <code>', 'Specific brand code')
   .option('-m, --model <codes>', 'Model code(s), comma-separated (requires --brand)')
   .option('-c, --classify', 'Classify new models by segment using AI')
-  .option('-f, --force', 'Re-fetch data even if it already exists in the database')
+  .option('-f, --force', 'Re-fetch prices even if they already exist in the database')
+  .option('-s, --sync', 'Re-sync brands/models/years from FIPE API (default: use cached)')
   .action(async (options) => {
     try {
       await crawl({
@@ -57,6 +58,7 @@ program
         modelCodes: options.model ? parseCommaSeparated(options.model) : undefined,
         classify: options.classify,
         force: options.force,
+        sync: options.sync,
       });
     } catch (err) {
       console.error('Crawl failed:', err);

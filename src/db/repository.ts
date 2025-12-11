@@ -172,3 +172,21 @@ export async function getModelById(modelId: number) {
 
   return model;
 }
+
+// Cached data queries (for skip-sync mode)
+export async function getAllBrands() {
+  return db.select().from(brands);
+}
+
+export async function getModelsByBrandId(brandId: number) {
+  return db.select().from(models).where(eq(models.brandId, brandId));
+}
+
+export async function getModelYearsByModelId(modelId: number) {
+  return db.select().from(modelYears).where(eq(modelYears.modelId, modelId));
+}
+
+export async function hasCachedData(): Promise<boolean> {
+  const [brand] = await db.select({ id: brands.id }).from(brands).limit(1);
+  return !!brand;
+}
