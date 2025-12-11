@@ -45,7 +45,7 @@ interface CrawlOptions {
   referenceCode?: number;
   years?: number[];
   months?: number[];
-  brandCode?: string;
+  brandCodes?: string[];
   modelCodes?: string[];
   classify?: boolean;
   force?: boolean;
@@ -97,8 +97,8 @@ export async function crawl(options: CrawlOptions = {}): Promise<void> {
     // Phase 1: Crawl brands (always fetch - cheap API call)
     log('  Phase 1: Crawling brands...');
     const apiBrands = await fipeClient.getBrands(ref.Codigo);
-    const filteredBrands = options.brandCode
-      ? apiBrands.filter((b) => b.Value === options.brandCode)
+    const filteredBrands = options.brandCodes
+      ? apiBrands.filter((b) => options.brandCodes!.includes(b.Value))
       : apiBrands;
 
     for (const b of filteredBrands) {

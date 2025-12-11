@@ -43,7 +43,7 @@ program
   .option('-r, --reference <code>', 'Specific reference table code')
   .option('-y, --year <year>', 'Year(s) to crawl (e.g., 2023, 2020-2023, or 2020,2022,2023)')
   .option('-M, --month <month>', 'Month(s) to crawl (e.g., 6, 1-6, or 1,3,6)')
-  .option('-b, --brand <code>', 'Specific brand code')
+  .option('-b, --brand <codes>', 'Brand code(s), comma-separated')
   .option('-m, --model <codes>', 'Model code(s), comma-separated (requires --brand)')
   .option('-c, --classify', 'Classify new models by segment using AI')
   .option('-f, --force', 'Re-fetch all data, ignoring sync status')
@@ -53,7 +53,7 @@ program
         referenceCode: options.reference ? parseInt(options.reference, 10) : undefined,
         years: options.year ? parseNumberList(options.year) : undefined,
         months: options.month ? parseNumberList(options.month) : undefined,
-        brandCode: options.brand,
+        brandCodes: options.brand ? parseCommaSeparated(options.brand) : undefined,
         modelCodes: options.model ? parseCommaSeparated(options.model) : undefined,
         classify: options.classify,
         force: options.force,
