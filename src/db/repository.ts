@@ -1,6 +1,16 @@
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { db } from './connection.js';
-import { referenceTables, brands, models, modelYears, prices, type Segment } from './schema.js';
+import {
+  referenceTables,
+  brands,
+  models,
+  modelYears,
+  prices,
+  referenceBrands,
+  referenceModels,
+  referenceModelYears,
+  type Segment,
+} from './schema.js';
 
 // Reference Tables
 export async function upsertReferenceTable(code: number, month: number, year: number) {
@@ -27,6 +37,32 @@ export async function getCrawledReferences(): Promise<number[]> {
     .where(eq(referenceTables.crawledAt, referenceTables.crawledAt)); // not null
 
   return rows.map((r) => r.code);
+}
+
+export async function isBrandsCrawled(referenceId: number): Promise<boolean> {
+  const [ref] = await db
+    .select({ brandsCrawledAt: referenceTables.brandsCrawledAt })
+    .from(referenceTables)
+    .where(eq(referenceTables.id, referenceId));
+  return !!ref?.brandsCrawledAt;
+}
+
+export async function markBrandsCrawled(referenceId: number) {
+  await db
+    .update(referenceTables)
+    .set({ brandsCrawledAt: new Date() })
+    .where(eq(referenceTables.id, referenceId));
+}
+
+export async function clearCrawlStatus(referenceId: number) {
+  await db
+    .update(referenceTables)
+    .set({ brandsCrawledAt: null })
+    .where(eq(referenceTables.id, referenceId));
+
+  await db.delete(referenceModelYears).where(eq(referenceModelYears.referenceTableId, referenceId));
+  await db.delete(referenceModels).where(eq(referenceModels.referenceTableId, referenceId));
+  await db.delete(referenceBrands).where(eq(referenceBrands.referenceTableId, referenceId));
 }
 
 // Brands
@@ -189,4 +225,162 @@ export async function getModelYearsByModelId(modelId: number) {
 export async function hasCachedData(): Promise<boolean> {
   const [brand] = await db.select({ id: brands.id }).from(brands).limit(1);
   return !!brand;
+}
+
+// Reference Brands (crawl status tracking)
+export async function upsertReferenceBrand(referenceTableId: number, brandId: number) {
+  const [existing] = await db
+    .select()
+    .from(referenceBrands)
+    .where(
+      and(
+        eq(referenceBrands.referenceTableId, referenceTableId),
+        eq(referenceBrands.brandId, brandId),
+      ),
+    );
+
+  if (existing) return existing;
+
+  const [inserted] = await db
+    .insert(referenceBrands)
+    .values({ referenceTableId, brandId })
+    .returning();
+
+  return inserted;
+}
+
+export async function getUncrawledReferenceBrands(referenceTableId: number) {
+  return db
+    .select({
+      id: referenceBrands.id,
+      brandId: referenceBrands.brandId,
+      fipeCode: brands.fipeCode,
+      name: brands.name,
+    })
+    .from(referenceBrands)
+    .innerJoin(brands, eq(referenceBrands.brandId, brands.id))
+    .where(
+      and(
+        eq(referenceBrands.referenceTableId, referenceTableId),
+        isNull(referenceBrands.modelsCrawledAt),
+      ),
+    );
+}
+
+export async function markReferenceBrandModelsCrawled(referenceBrandId: number) {
+  await db
+    .update(referenceBrands)
+    .set({ modelsCrawledAt: new Date() })
+    .where(eq(referenceBrands.id, referenceBrandId));
+}
+
+// Reference Models (crawl status tracking)
+export async function upsertReferenceModel(referenceTableId: number, modelId: number) {
+  const [existing] = await db
+    .select()
+    .from(referenceModels)
+    .where(
+      and(
+        eq(referenceModels.referenceTableId, referenceTableId),
+        eq(referenceModels.modelId, modelId),
+      ),
+    );
+
+  if (existing) return existing;
+
+  const [inserted] = await db
+    .insert(referenceModels)
+    .values({ referenceTableId, modelId })
+    .returning();
+
+  return inserted;
+}
+
+export async function getUncrawledReferenceModels(referenceTableId: number) {
+  return db
+    .select({
+      id: referenceModels.id,
+      modelId: referenceModels.modelId,
+      brandId: models.brandId,
+      fipeCode: models.fipeCode,
+      name: models.name,
+      brandFipeCode: brands.fipeCode,
+      brandName: brands.name,
+    })
+    .from(referenceModels)
+    .innerJoin(models, eq(referenceModels.modelId, models.id))
+    .innerJoin(brands, eq(models.brandId, brands.id))
+    .where(
+      and(
+        eq(referenceModels.referenceTableId, referenceTableId),
+        isNull(referenceModels.yearsCrawledAt),
+      ),
+    );
+}
+
+export async function markReferenceModelYearsCrawled(referenceModelId: number) {
+  await db
+    .update(referenceModels)
+    .set({ yearsCrawledAt: new Date() })
+    .where(eq(referenceModels.id, referenceModelId));
+}
+
+// Reference Model Years (crawl status tracking)
+export async function upsertReferenceModelYear(referenceTableId: number, modelYearId: number) {
+  const [existing] = await db
+    .select()
+    .from(referenceModelYears)
+    .where(
+      and(
+        eq(referenceModelYears.referenceTableId, referenceTableId),
+        eq(referenceModelYears.modelYearId, modelYearId),
+      ),
+    );
+
+  if (existing) return existing;
+
+  const [inserted] = await db
+    .insert(referenceModelYears)
+    .values({ referenceTableId, modelYearId })
+    .returning();
+
+  return inserted;
+}
+
+export async function getUncrawledReferenceModelYears(referenceTableId: number) {
+  return db
+    .select({
+      id: referenceModelYears.id,
+      modelYearId: referenceModelYears.modelYearId,
+      year: modelYears.year,
+      fuelCode: modelYears.fuelCode,
+      modelId: modelYears.modelId,
+      modelFipeCode: models.fipeCode,
+      brandFipeCode: brands.fipeCode,
+    })
+    .from(referenceModelYears)
+    .innerJoin(modelYears, eq(referenceModelYears.modelYearId, modelYears.id))
+    .innerJoin(models, eq(modelYears.modelId, models.id))
+    .innerJoin(brands, eq(models.brandId, brands.id))
+    .where(
+      and(
+        eq(referenceModelYears.referenceTableId, referenceTableId),
+        isNull(referenceModelYears.priceCrawledAt),
+      ),
+    );
+}
+
+export async function markReferenceModelYearPriceCrawled(referenceModelYearId: number) {
+  await db
+    .update(referenceModelYears)
+    .set({ priceCrawledAt: new Date() })
+    .where(eq(referenceModelYears.id, referenceModelYearId));
+}
+
+export async function markReferenceModelYearsPriceCrawledBatch(ids: number[]) {
+  if (ids.length === 0) return;
+  await db
+    .update(referenceModelYears)
+    .set({ priceCrawledAt: new Date() })
+    .where(inArray(referenceModelYears.id, ids));
 }

@@ -3,25 +3,6 @@ import { fipeClient } from '../fipe/client.js';
 import * as repo from '../db/repository.js';
 import { classifySingleModel } from '../classifier/segment-classifier.js';
 
-interface BrandData {
-  id: number;
-  fipeCode: string;
-  name: string;
-}
-
-interface ModelData {
-  id: number;
-  fipeCode: string;
-  name: string;
-}
-
-interface ModelYearData {
-  id: number;
-  year: number;
-  fuelCode: number;
-  fuelName: string | null;
-}
-
 function parseYearValue(value: string): { year: number; fuelCode: number } {
   // Format: "2020-1" (year-fuelCode)
   const [yearStr, fuelCodeStr] = value.split('-');
@@ -68,26 +49,13 @@ interface CrawlOptions {
   modelCodes?: string[];
   classify?: boolean;
   force?: boolean;
-  sync?: boolean;
   onProgress?: (message: string) => void;
 }
 
 export async function crawl(options: CrawlOptions = {}): Promise<void> {
   const log = options.onProgress ?? console.log;
 
-  // Determine if we should sync from API or use cached data
-  let shouldSync = options.sync ?? false;
-
-  // Auto-enable sync if no cached data exists
-  if (!shouldSync) {
-    const hasCached = await repo.hasCachedData();
-    if (!hasCached) {
-      log('No cached data found, syncing from FIPE API...');
-      shouldSync = true;
-    }
-  }
-
-  // Get reference tables (always from API - needed to know which refs to process)
+  // Get reference tables from API
   log('Fetching reference tables...');
   const allRefs = await fipeClient.getReferenceTables();
 
@@ -110,9 +78,6 @@ export async function crawl(options: CrawlOptions = {}): Promise<void> {
   }
 
   log(`Found ${refs.length} reference tables to process`);
-  if (!shouldSync) {
-    log('Using cached data (use --sync to refresh from API)');
-  }
 
   let totalPrices = 0;
   const startTime = Date.now();
@@ -123,155 +88,163 @@ export async function crawl(options: CrawlOptions = {}): Promise<void> {
 
     log(`\nProcessing reference ${ref.Codigo} (${ref.Mes.trim()})...`);
 
-    // Get brands - from API if syncing, from DB otherwise
-    let brands: BrandData[];
-
-    if (shouldSync) {
-      const allBrands = await fipeClient.getBrands(ref.Codigo);
-      const filteredBrands = options.brandCode
-        ? allBrands.filter((b) => b.Value === options.brandCode)
-        : allBrands;
-
-      // Upsert brands and convert to BrandData
-      brands = [];
-      for (const b of filteredBrands) {
-        const record = await repo.upsertBrand(b.Value, b.Label);
-        brands.push({ id: record.id, fipeCode: record.fipeCode, name: record.name });
-      }
-    } else {
-      const allBrands = await repo.getAllBrands();
-      brands = options.brandCode
-        ? allBrands.filter((b) => b.fipeCode === options.brandCode)
-        : allBrands;
+    // Clear crawl status if --force
+    if (options.force) {
+      log('  Force mode: clearing crawl status...');
+      await repo.clearCrawlStatus(refRecord.id);
     }
 
-    log(`  Found ${brands.length} brands`);
+    // Phase 1: Crawl brands (if not already crawled)
+    const brandsCrawled = await repo.isBrandsCrawled(refRecord.id);
+    if (!brandsCrawled) {
+      log('  Phase 1: Crawling brands...');
+      const apiBrands = await fipeClient.getBrands(ref.Codigo);
+      const filteredBrands = options.brandCode
+        ? apiBrands.filter((b) => b.Value === options.brandCode)
+        : apiBrands;
 
-    for (const brand of brands) {
-      const brandStart = Date.now();
-      let brandPrices = 0;
+      for (const b of filteredBrands) {
+        const brand = await repo.upsertBrand(b.Value, b.Label);
+        await repo.upsertReferenceBrand(refRecord.id, brand.id);
+      }
+      await repo.markBrandsCrawled(refRecord.id);
+      log(`    Crawled ${filteredBrands.length} brands`);
+    } else {
+      log('  Phase 1: Brands already crawled');
+    }
 
-      try {
-        // Get models - from API if syncing, from DB otherwise
-        let models: ModelData[];
+    // Phase 2: Crawl models for each uncrawled brand
+    const uncrawledBrands = await repo.getUncrawledReferenceBrands(refRecord.id);
+    if (uncrawledBrands.length > 0) {
+      log(`  Phase 2: Crawling models for ${uncrawledBrands.length} brands...`);
 
-        if (shouldSync) {
+      for (const brand of uncrawledBrands) {
+        try {
           const modelsResponse = await fipeClient.getModels(ref.Codigo, brand.fipeCode);
           const filteredModels = options.modelCodes
             ? modelsResponse.Modelos.filter((m) => options.modelCodes!.includes(String(m.Value)))
             : modelsResponse.Modelos;
 
-          // Upsert models and convert to ModelData
-          models = [];
           for (const m of filteredModels) {
-            const { model: record, isNew } = await repo.upsertModel(
-              brand.id,
+            const { model: modelRecord, isNew } = await repo.upsertModel(
+              brand.brandId,
               String(m.Value),
               m.Label,
             );
-            models.push({ id: record.id, fipeCode: record.fipeCode, name: record.name });
+            await repo.upsertReferenceModel(refRecord.id, modelRecord.id);
 
             // Classify new models (if enabled)
             if (isNew && options.classify) {
               const segment = await classifySingleModel(brand.name, m.Label);
               if (segment) {
-                await repo.updateModelSegment(record.id, segment, 'ai');
-                log(`    Classified ${m.Label} as ${segment}`);
+                await repo.updateModelSegment(modelRecord.id, segment, 'ai');
+                log(`      Classified ${m.Label} as ${segment}`);
               }
             }
           }
-        } else {
-          const allModels = await repo.getModelsByBrandId(brand.id);
-          models = options.modelCodes
-            ? allModels.filter((m) => options.modelCodes!.includes(m.fipeCode))
-            : allModels;
+
+          await repo.markReferenceBrandModelsCrawled(brand.id);
+        } catch {
+          // Models fetch failed - leave uncrawled for retry
+          log(`    Error crawling models for ${brand.name}`);
         }
-
-        log(`  Processing brand: ${brand.name} (${models.length} models)`);
-
-        const bar = new cliProgress.SingleBar({
-          format: '    [{bar}] {value}/{total} | {model}',
-          barCompleteChar: '█',
-          barIncompleteChar: '░',
-          hideCursor: true,
-        });
-        bar.start(models.length, 0, { model: '' });
-
-        for (const model of models) {
-          bar.update({ model: model.name.slice(0, 30) });
-
-          try {
-            // Get years - from API if syncing, from DB otherwise
-            let modelYears: ModelYearData[];
-
-            if (shouldSync) {
-              const yearsResponse = await fipeClient.getYears(
-                ref.Codigo,
-                brand.fipeCode,
-                model.fipeCode,
-              );
-
-              // Upsert model years and convert to ModelYearData
-              modelYears = [];
-              for (const y of yearsResponse) {
-                const { year: modelYear, fuelCode } = parseYearValue(y.Value);
-                const record = await repo.upsertModelYear(model.id, modelYear, fuelCode, y.Label);
-                modelYears.push({
-                  id: record.id,
-                  year: record.year,
-                  fuelCode: record.fuelCode,
-                  fuelName: record.fuelName,
-                });
-              }
-            } else {
-              modelYears = await repo.getModelYearsByModelId(model.id);
-            }
-
-            for (const modelYear of modelYears) {
-              // Skip if price already exists (unless --force)
-              if (!options.force) {
-                const exists = await repo.priceExists(modelYear.id, refRecord.id);
-                if (exists) {
-                  continue;
-                }
-              }
-
-              try {
-                const price = await fipeClient.getPrice({
-                  referenceCode: ref.Codigo,
-                  brandCode: brand.fipeCode,
-                  modelCode: model.fipeCode,
-                  year: String(modelYear.year),
-                  fuelCode: modelYear.fuelCode,
-                });
-
-                await repo.upsertPrice(
-                  modelYear.id,
-                  refRecord.id,
-                  price.CodigoFipe,
-                  parsePrice(price.Valor),
-                );
-
-                totalPrices++;
-                brandPrices++;
-              } catch {
-                // Price fetch failed - skip this year
-              }
-            }
-          } catch {
-            // Years fetch failed - skip this model
-          }
-
-          bar.increment();
-        }
-
-        bar.stop();
-        const brandDuration = Math.round((Date.now() - brandStart) / 1000);
-        log(`  Completed ${brand.name} in ${brandDuration}s (${brandPrices} prices)`);
-      } catch (err) {
-        // Models fetch failed - skip this brand
-        log(`    Error fetching models for ${brand.name}: ${err}`);
       }
+    } else {
+      log('  Phase 2: Models already crawled');
+    }
+
+    // Phase 3: Crawl model-years for each uncrawled model
+    const uncrawledModels = await repo.getUncrawledReferenceModels(refRecord.id);
+    if (uncrawledModels.length > 0) {
+      log(`  Phase 3: Crawling years for ${uncrawledModels.length} models...`);
+
+      const bar = new cliProgress.SingleBar({
+        format: '    [{bar}] {value}/{total} | {model}',
+        barCompleteChar: '█',
+        barIncompleteChar: '░',
+        hideCursor: true,
+      });
+      bar.start(uncrawledModels.length, 0, { model: '' });
+
+      for (const model of uncrawledModels) {
+        bar.update({ model: model.name.slice(0, 30) });
+
+        try {
+          const yearsResponse = await fipeClient.getYears(
+            ref.Codigo,
+            model.brandFipeCode,
+            model.fipeCode,
+          );
+
+          for (const y of yearsResponse) {
+            const { year: modelYear, fuelCode } = parseYearValue(y.Value);
+            const yearRecord = await repo.upsertModelYear(
+              model.modelId,
+              modelYear,
+              fuelCode,
+              y.Label,
+            );
+            await repo.upsertReferenceModelYear(refRecord.id, yearRecord.id);
+          }
+
+          await repo.markReferenceModelYearsCrawled(model.id);
+        } catch {
+          // Years fetch failed - leave uncrawled for retry
+        }
+
+        bar.increment();
+      }
+
+      bar.stop();
+    } else {
+      log('  Phase 3: Model-years already crawled');
+    }
+
+    // Phase 4: Fetch prices for each uncrawled model-year
+    const uncrawledModelYears = await repo.getUncrawledReferenceModelYears(refRecord.id);
+    if (uncrawledModelYears.length > 0) {
+      log(`  Phase 4: Fetching ${uncrawledModelYears.length} prices...`);
+
+      const bar = new cliProgress.SingleBar({
+        format: '    [{bar}] {value}/{total} prices',
+        barCompleteChar: '█',
+        barIncompleteChar: '░',
+        hideCursor: true,
+      });
+      bar.start(uncrawledModelYears.length, 0);
+
+      let refPrices = 0;
+      for (const my of uncrawledModelYears) {
+        try {
+          const price = await fipeClient.getPrice({
+            referenceCode: ref.Codigo,
+            brandCode: my.brandFipeCode,
+            modelCode: my.modelFipeCode,
+            year: String(my.year),
+            fuelCode: my.fuelCode,
+          });
+
+          await repo.upsertPrice(
+            my.modelYearId,
+            refRecord.id,
+            price.CodigoFipe,
+            parsePrice(price.Valor),
+          );
+
+          await repo.markReferenceModelYearPriceCrawled(my.id);
+          totalPrices++;
+          refPrices++;
+        } catch {
+          // Price fetch failed - leave uncrawled for retry
+        }
+
+        bar.increment();
+      }
+
+      bar.stop();
+      log(`    Fetched ${refPrices} prices`);
+    } else {
+      log('  Phase 4: All prices already crawled');
     }
 
     await repo.markReferenceCrawled(ref.Codigo);

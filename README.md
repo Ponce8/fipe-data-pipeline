@@ -50,12 +50,26 @@ pnpm crawl -- --brand 59 --model 5940         # Modelo específico
 pnpm crawl -- --brand 59 --model 5940,5941    # Múltiplos modelos
 pnpm crawl -- --reference 328                 # Tabela de referência específica
 pnpm crawl -- --classify                      # Classificar modelos novos via AI
+pnpm crawl -- --force                         # Re-buscar tudo ignorando status de sync
 ALLOWED_BRANDS=21,22,23 pnpm crawl            # Limitar marcas via env
 
 pnpm status                                   # Estatísticas do banco
 pnpm classify                                 # Classificar modelos sem segmento
 pnpm classify -- --dry-run                    # Preview da classificação
 ```
+
+## Como Funciona o Crawl
+
+O crawler usa um sistema de **sync granular** que rastreia o progresso por tabela de referência:
+
+1. **Fase 1 - Brands**: Busca marcas da API e armazena no banco
+2. **Fase 2 - Models**: Para cada marca, busca modelos
+3. **Fase 3 - Model-Years**: Para cada modelo, busca anos/combustíveis
+4. **Fase 4 - Prices**: Para cada ano, busca o preço
+
+Cada fase é rastreada independentemente. Se o crawl for interrompido, continua de onde parou na próxima execução.
+
+Use `--force` para ignorar o status de sync e re-buscar todos os dados.
 
 ## Docker
 

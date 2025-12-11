@@ -17,6 +17,7 @@ export const referenceTables = pgTable(
     month: integer('month').notNull(),
     year: integer('year').notNull(),
     crawledAt: timestamp('crawled_at'),
+    brandsCrawledAt: timestamp('brands_crawled_at'),
   },
   (table) => [index('idx_reference_year_month').on(table.year, table.month)],
 );
@@ -102,5 +103,63 @@ export const prices = pgTable(
     index('idx_prices_reference').on(table.referenceTableId),
     index('idx_prices_fipe_code').on(table.fipeCode),
     index('idx_prices_model_year_id').on(table.modelYearId),
+  ],
+);
+
+// Crawl status tracking tables (per reference)
+export const referenceBrands = pgTable(
+  'reference_brands',
+  {
+    id: serial('id').primaryKey(),
+    referenceTableId: integer('reference_table_id')
+      .references(() => referenceTables.id)
+      .notNull(),
+    brandId: integer('brand_id')
+      .references(() => brands.id)
+      .notNull(),
+    modelsCrawledAt: timestamp('models_crawled_at'),
+  },
+  (table) => [
+    unique().on(table.referenceTableId, table.brandId),
+    index('idx_reference_brands_ref').on(table.referenceTableId),
+    index('idx_reference_brands_brand').on(table.brandId),
+  ],
+);
+
+export const referenceModels = pgTable(
+  'reference_models',
+  {
+    id: serial('id').primaryKey(),
+    referenceTableId: integer('reference_table_id')
+      .references(() => referenceTables.id)
+      .notNull(),
+    modelId: integer('model_id')
+      .references(() => models.id)
+      .notNull(),
+    yearsCrawledAt: timestamp('years_crawled_at'),
+  },
+  (table) => [
+    unique().on(table.referenceTableId, table.modelId),
+    index('idx_reference_models_ref').on(table.referenceTableId),
+    index('idx_reference_models_model').on(table.modelId),
+  ],
+);
+
+export const referenceModelYears = pgTable(
+  'reference_model_years',
+  {
+    id: serial('id').primaryKey(),
+    referenceTableId: integer('reference_table_id')
+      .references(() => referenceTables.id)
+      .notNull(),
+    modelYearId: integer('model_year_id')
+      .references(() => modelYears.id)
+      .notNull(),
+    priceCrawledAt: timestamp('price_crawled_at'),
+  },
+  (table) => [
+    unique().on(table.referenceTableId, table.modelYearId),
+    index('idx_reference_model_years_ref').on(table.referenceTableId),
+    index('idx_reference_model_years_my').on(table.modelYearId),
   ],
 );
